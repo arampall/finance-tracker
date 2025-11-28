@@ -18,6 +18,9 @@ class UserCreate(UserBase):
     """User creation schema"""
     password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
 
+class UserLogin(UserBase):
+    """User login schema"""
+    password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
 
 class UserResponse(UserBase):
     """User response schema"""

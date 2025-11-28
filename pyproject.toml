@@ -16,6 +16,8 @@ dependencies = [
     "asyncpg (>=0.30.0,<0.31.0)",
     "greenlet (>=3.2.4,<4.0.0)",
     "vite (>=1.5.2,<2.0.0)",
+    "passlib (>=1.7.4,<2.0.0)",
+    "python-jose[cryptography] (>=3.5.0,<4.0.0)",
 ]
 
 [tool.poetry]
