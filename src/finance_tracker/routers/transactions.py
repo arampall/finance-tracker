@@ -5,8 +5,9 @@ from sqlalchemy import select, and_
 from datetime import datetime, timezone
 
 from ..database import get_db
-from ..models import Transaction, Category, TransactionType
+from ..models import Transaction, Category, TransactionType, User
 from ..schemas import TransactionCreate, TransactionUpdate, TransactionResponse
+from ..auth import get_current_user
 
 router = APIRouter(
     prefix="/api/transactions",
@@ -23,8 +24,7 @@ async def get_transactions(
     transaction_type: Optional[TransactionType] = Query(None, description="Filter by transaction type"),
     category_id: Optional[int] = Query(None, description="Filter by category ID"),
     db: AsyncSession = Depends(get_db),
-    # TODO: Add authentication dependency when auth is implemented
-    # current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get a list of transactions with optional filtering and pagination.
@@ -36,11 +36,8 @@ async def get_transactions(
     - **transaction_type**: Filter by type (income or expense)
     - **category_id**: Filter by category ID
     """
-    # Build query
-    query = select(Transaction)
-    
-    # TODO: Add user filtering when auth is implemented
-    # query = query.where(Transaction.user_id == current_user.id)
+    # Build query - filter by current user
+    query = select(Transaction).where(Transaction.user_id == current_user.id)
     
     # Apply filters
     if start_date:
@@ -66,15 +63,14 @@ async def get_transactions(
 async def get_transaction(
     transaction_id: int,
     db: AsyncSession = Depends(get_db),
-    # TODO: Add authentication dependency
-    # current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get a specific transaction by ID.
     """
-    query = select(Transaction).where(Transaction.id == transaction_id)
-    # TODO: Add user check when auth is implemented
-    # query = query.where(Transaction.user_id == current_user.id)
+    query = select(Transaction).where(
+        and_(Transaction.id == transaction_id, Transaction.user_id == current_user.id)
+    )
     
     result = await db.execute(query)
     transaction = result.scalar_one_or_none()
@@ -92,8 +88,7 @@ async def get_transaction(
 async def create_transaction(
     transaction_data: TransactionCreate,
     db: AsyncSession = Depends(get_db),
-    # TODO: Add authentication dependency
-    # current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Create a new transaction.
@@ -104,11 +99,11 @@ async def create_transaction(
     - **description**: Optional description
     - **category_id**: Optional category ID
     """
-    # Validate category if provided
+    # Validate category if provided (must belong to current user)
     if transaction_data.category_id:
-        category_query = select(Category).where(Category.id == transaction_data.category_id)
-        # TODO: Add user check when auth is implemented
-        # category_query = category_query.where(Category.user_id == current_user.id)
+        category_query = select(Category).where(
+            and_(Category.id == transaction_data.category_id, Category.user_id == current_user.id)
+        )
         
         category_result = await db.execute(category_query)
         category = category_result.scalar_one_or_none()
@@ -116,21 +111,17 @@ async def create_transaction(
         if not category:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Category not found"
+                detail="Category not found or does not belong to you"
             )
     
-    # Create transaction
-    # TODO: Set user_id when auth is implemented
-    # user_id = current_user.id
-    user_id = 1  # Placeholder - remove when auth is implemented
-    
+    # Create transaction for current user
     new_transaction = Transaction(
         amount=transaction_data.amount,
         type=transaction_data.type,
         description=transaction_data.description,
         category_id=transaction_data.category_id,
         transaction_date=transaction_data.transaction_date or datetime.now(timezone.utc),
-        user_id=user_id
+        user_id=current_user.id
     )
     
     db.add(new_transaction)
@@ -145,18 +136,17 @@ async def update_transaction(
     transaction_id: int,
     transaction_data: TransactionUpdate,
     db: AsyncSession = Depends(get_db),
-    # TODO: Add authentication dependency
-    # current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Update an existing transaction.
     
     Only provided fields will be updated (partial update).
     """
-    # Get transaction
-    query = select(Transaction).where(Transaction.id == transaction_id)
-    # TODO: Add user check when auth is implemented
-    # query = query.where(Transaction.user_id == current_user.id)
+    # Get transaction (must belong to current user)
+    query = select(Transaction).where(
+        and_(Transaction.id == transaction_id, Transaction.user_id == current_user.id)
+    )
     
     result = await db.execute(query)
     transaction = result.scalar_one_or_none()
@@ -167,11 +157,11 @@ async def update_transaction(
             detail="Transaction not found"
         )
     
-    # Validate category if being updated
+    # Validate category if being updated (must belong to current user)
     if transaction_data.category_id is not None:
-        category_query = select(Category).where(Category.id == transaction_data.category_id)
-        # TODO: Add user check when auth is implemented
-        # category_query = category_query.where(Category.user_id == current_user.id)
+        category_query = select(Category).where(
+            and_(Category.id == transaction_data.category_id, Category.user_id == current_user.id)
+        )
         
         category_result = await db.execute(category_query)
         category = category_result.scalar_one_or_none()
@@ -179,7 +169,7 @@ async def update_transaction(
         if not category:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Category not found"
+                detail="Category not found or does not belong to you"
             )
     
     # Update fields (only provided fields)
@@ -197,16 +187,15 @@ async def update_transaction(
 async def delete_transaction(
     transaction_id: int,
     db: AsyncSession = Depends(get_db),
-    # TODO: Add authentication dependency
-    # current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Delete a transaction.
     """
-    # Get transaction
-    query = select(Transaction).where(Transaction.id == transaction_id)
-    # TODO: Add user check when auth is implemented
-    # query = query.where(Transaction.user_id == current_user.id)
+    # Get transaction for the current user
+    query = select(Transaction).where(
+        and_(Transaction.id == transaction_id, Transaction.user_id == current_user.id)
+    )
     
     result = await db.execute(query)
     transaction = result.scalar_one_or_none()
